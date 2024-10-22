@@ -1,3 +1,16 @@
+const AppError = require('../utils/appError');
+
+const handleCastErrorDB = (err, res) => {
+    const message = `Invalid ID ${err.path}: ${err.value}`;
+    return new AppError(message, 400);
+};
+
+const handleDuplicateFieldsDB = (err, res) => {
+    const value = err.errmsg.match(/(["'])(\\?.)*\1/);
+    const message = `Duplicate field value: ${value}. Please use another value!`;
+    return new AppError(message, 400);
+};
+
 const sendErrorDev = (err, res) => {
     res.status(err.statusCode).json({
         status: err.status,
@@ -14,7 +27,7 @@ const sendErrorProd = (err, res) => {
             status: err.status,
             message: err.message,
         });
-    // Programming or other unknown error: don't leak error details
+        // Programming or other unknown error: don't leak error details
     } else {
         console.log('Error:', err);
 
@@ -28,10 +41,14 @@ const sendErrorProd = (err, res) => {
 module.exports = (err, req, res, next) => {
     err.statusCode = err.statusCode || 500;
     err.status = err.status || 'error';
+    console.log(process.env.NODE_ENV);
 
     if (process.env.NODE_ENV === 'development') {
         sendErrorDev(err, res);
     } else if (process.env.NODE_ENV === 'production') {
-        sendErrorProd(err, res);
+        let error = { ...err };
+        if (error.name === 'CastError') error = handleCastErrorDB(error, res);
+        if (error.code === 11000) error = handleDuplicateFieldsDB(err, res);
+        sendErrorProd(error, res);
     }
 };
